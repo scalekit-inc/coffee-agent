@@ -1,0 +1,25 @@
+"""
+Configuration settings for the Coffee Agent application.
+These values can be customized via environment variables.
+"""
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# OpenAI Configuration
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
+OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "1000"))
+OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0.7"))
+OPENAI_TIMEOUT_SEC = int(os.getenv("OPENAI_TIMEOUT_SEC", "30"))
+
+# User Timezone Configuration
+USER_TIMEZONE = os.getenv("USER_TIMEZONE", "PDT")
+USER_TIMEZONE_OFFSET = os.getenv("USER_TIMEZONE_OFFSET", "UTC-8")
+
+# Function Names 
+FUNCTION_GMAIL_FETCH_MAILS = "GMAIL_FETCH_MAILS"
+FUNCTION_CALENDAR_FETCH_EVENTS = "GOOGLECALENDAR_FETCH_EVENTS"
+FUNCTION_CALENDAR_CREATE_EVENT = "GOOGLECALENDAR_CREATE_EVENT"
+FUNCTION_NOTION_CREATE_PAGE = "NOTION_CREATE_PAGE"
+FUNCTION_NOTION_SEARCH_PAGES = "NOTION_SEARCH_PAGES"

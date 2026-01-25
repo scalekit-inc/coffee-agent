@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coffee Agent - Your AI Assistant</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='uploads/coffee-desk-favicon.svg') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <img src="{{ url_for('static', filename='uploads/coffee-desk-name-icon.png') }}" alt="Coffee Agent" class="logo-image">
+                </div>
+            </div>
+            
+            <div class="user-section">
+                <div class="user-info" id="userInfo" style="display: none;">
+                    <div class="user-avatar">
+                        <span id="userInitial"></span>
+                    </div>
+                    <div class="user-details">
+                        <span class="user-name" id="userName"></span>
+                        <span class="user-email" id="userEmail"></span>
+                    </div>
+                    <button class="logout-btn" onclick="logout()" title="Logout">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                            <polyline points="16 17 21 12 16 7"></polyline>
+                            <line x1="21" y1="12" x2="9" y2="12"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="integrations-section">
+                <h3 class="section-title">Integrations</h3>
+                <div class="integration-list">
+                    <div class="integration-card">
+                        <div class="integration-header">
+                            <span class="integration-icon">📧</span>
+                            <span class="integration-name">Gmail</span>
+                        </div>
+                        <div class="integration-controls">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="gmailToggle">
+                                <span class="slider"></span>
+                            </label>
+                            <div class="integration-status-badge" id="gmailStatus">Checking...</div>
+                        </div>
+                    </div>
+                    
+                    <div class="integration-card">
+                        <div class="integration-header">
+                            <span class="integration-icon">📅</span>
+                            <span class="integration-name">Calendar</span>
+                        </div>
+                        <div class="integration-controls">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="calendarToggle">
+                                <span class="slider"></span>
+                            </label>
+                            <div class="integration-status-badge" id="calendarStatus">Checking...</div>
+                        </div>
+                    </div>
+                    
+                    <div class="integration-card">
+                        <div class="integration-header">
+                            <span class="integration-icon">📝</span>
+                            <span class="integration-name">Notion</span>
+                        </div>
+                        <div class="integration-controls">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="notionToggle">
+                                <span class="slider"></span>
+                            </label>
+                            <div class="integration-status-badge" id="notionStatus">Checking...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <div class="chat-header">
+                <div class="header-content">
+                    <h2>Chat with Coffee Agent</h2>
+                    <p>I can help you manage emails, calendar events, and Notion pages</p>
+                </div>
+            </div>
+            
+            <div class="chat-messages" id="chatMessages">
+                <div class="message ai-message">
+                    <div class="message-avatar">☕</div>
+                    <div class="message-content">
+                        <p>Hello! I'm Coffee Agent, your AI assistant with Gmail, Google Calendar, and Notion integration. I can help you manage your emails, calendar events, and Notion pages efficiently. What would you like to accomplish today?</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="chat-input-container">
+                <form id="chatForm" class="chat-form">
+                    <div class="input-wrapper">
+                        <textarea 
+                            id="messageInput" 
+                            placeholder="What would you like to accomplish today? (e.g., 'fetch my recent emails' or 'show my calendar events')" 
+                            rows="1"
+                            maxlength="2000"
+                        ></textarea>
+                        <button type="submit" id="sendButton" disabled>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <!-- Gmail Authorization Modal -->
+    <div id="gmailModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🔐 Gmail Authorization Required</h3>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>To use Gmail features, you need to authorize access to your Gmail account.</p>
+                <div class="auth-link-container">
+                    <a id="authLink" href="#" target="_blank" class="auth-link">
+                        <span class="auth-icon">🔗</span>
+                        <span class="auth-text">Click to Authorize Gmail Access</span>
+                        <span class="auth-arrow">↗</span>
+                    </a>
+                </div>
+                <div class="auth-steps">
+                    <div class="step">
+                        <span class="step-number">1</span>
+                        <span class="step-text">Click the authorization link above</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">2</span>
+                        <span class="step-text">Sign in with your Google account</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">3</span>
+                        <span class="step-text">Grant permission to access Gmail</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">4</span>
+                        <span class="step-text">Return here and click "I'm Done"</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="authDone" class="btn btn-primary">✅ I'm Done - Check Connection</button>
+                <button id="authCancel" class="btn btn-secondary">❌ Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Google Calendar Authorization Modal -->
+    <div id="calendarModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📅 Google Calendar Authorization Required</h3>
+                <button class="modal-close" id="calendarModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>To use Google Calendar features, you need to authorize access to your Google Calendar account.</p>
+                <div class="auth-link-container">
+                    <a id="calendarAuthLink" href="#" target="_blank" class="auth-link">
+                        <span class="auth-icon">🔗</span>
+                        <span class="auth-text">Click to Authorize Google Calendar Access</span>
+                        <span class="auth-arrow">↗</span>
+                    </a>
+                </div>
+                <div class="auth-steps">
+                    <div class="step">
+                        <span class="step-number">1</span>
+                        <span class="step-text">Click the authorization link above</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">2</span>
+                        <span class="step-text">Sign in with your Google account</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">3</span>
+                        <span class="step-text">Grant permission to access Google Calendar</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">4</span>
+                        <span class="step-text">Return here and click "I'm Done"</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="calendarAuthDone" class="btn btn-primary">✅ I'm Done - Check Connection</button>
+                <button id="calendarAuthCancel" class="btn btn-secondary">❌ Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notion Authorization Modal -->
+    <div id="notionModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>📝 Notion Authorization Required</h3>
+                <button class="modal-close" id="notionModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>To use Notion features, you need to authorize access to your Notion workspace.</p>
+                <div class="auth-link-container">
+                    <a id="notionAuthLink" href="#" target="_blank" class="auth-link">
+                        <span class="auth-icon">🔗</span>
+                        <span class="auth-text">Click to Authorize Notion Access</span>
+                        <span class="auth-arrow">↗</span>
+                    </a>
+                </div>
+                <div class="auth-steps">
+                    <div class="step">
+                        <span class="step-number">1</span>
+                        <span class="step-text">Click the authorization link above</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">2</span>
+                        <span class="step-text">Sign in with your Notion account</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">3</span>
+                        <span class="step-text">Grant permission to access your Notion workspace</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">4</span>
+                        <span class="step-text">Return here and click "I'm Done"</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="notionAuthDone" class="btn btn-primary">✅ I'm Done - Check Connection</button>
+                <button id="notionAuthCancel" class="btn btn-secondary">❌ Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    
+    <script>
+        // Authentication check
+        document.addEventListener('DOMContentLoaded', function() {
+            const userName = sessionStorage.getItem('userName');
+            const userEmail = sessionStorage.getItem('userEmail');
+            
+            if (!userName || !userEmail) {
+                // Redirect to login if not authenticated
+                window.location.href = '/login';
+                return;
+            }
+            
+            // Display user info
+            document.getElementById('userName').textContent = userName;
+            document.getElementById('userEmail').textContent = userEmail;
+            document.getElementById('userInitial').textContent = userName.charAt(0).toUpperCase();
+            document.getElementById('userInfo').style.display = 'flex';
+        });
+        
+        function logout() {
+            // Clear session storage
+            sessionStorage.removeItem('userName');
+            sessionStorage.removeItem('userEmail');
+            
+            // Redirect to login
+            window.location.href = '/login';
+        }
+    </script>
+</body>
+</html>

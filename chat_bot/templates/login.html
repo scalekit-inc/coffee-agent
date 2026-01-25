@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Coffee Agent</title>
+    <link rel="icon" type="image/svg+xml" href="/static/uploads/coffee-desk-favicon.svg">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        :root {
+            --coffee-primary: hsl(26, 38%, 44%);
+            --coffee-primary-foreground: hsl(210, 40%, 98%);
+            --coffee-primary-hover: hsl(26, 38%, 50%);
+            --coffee-background: hsl(0, 0%, 100%);
+            --coffee-foreground: hsl(222.2, 84%, 4.9%);
+            --coffee-muted: hsl(210, 40%, 96%);
+            --coffee-muted-foreground: hsl(215.4, 16.3%, 46.9%);
+            --coffee-border: hsl(214.3, 31.8%, 91.4%);
+            --coffee-input: hsl(214.3, 31.8%, 91.4%);
+            --coffee-ring: hsl(26, 38%, 44%);
+            --coffee-radius: 0.5rem;
+        }
+        
+        body {
+            background: var(--coffee-background);
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+        
+        .login-container {
+            max-width: 24rem;
+            width: 90%;
+            padding: 2rem;
+            background: var(--coffee-background);
+            border-radius: var(--coffee-radius);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            border: 1px solid var(--coffee-border);
+        }
+        
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        
+        .login-header p {
+            color: var(--coffee-muted-foreground);
+            font-size: 0.875rem;
+            margin-top: 0;
+        }
+        
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+        
+        .form-group label {
+            display: block;
+            color: var(--coffee-foreground);
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 0.625rem 0.75rem;
+            background: var(--coffee-background);
+            border: 1px solid var(--coffee-input);
+            border-radius: calc(var(--coffee-radius) - 2px);
+            color: var(--coffee-foreground);
+            font-size: 0.875rem;
+            transition: all 0.2s;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+        
+        .form-group input:focus {
+            outline: 2px solid transparent;
+            outline-offset: 2px;
+            border-color: var(--coffee-ring);
+            box-shadow: 0 0 0 2px var(--coffee-ring);
+        }
+        
+        .form-group input::placeholder {
+            color: var(--coffee-muted-foreground);
+        }
+        
+        .login-btn {
+            width: 100%;
+            padding: 0.625rem;
+            background: var(--coffee-primary);
+            color: var(--coffee-primary-foreground);
+            border: 1px solid var(--coffee-primary);
+            border-radius: calc(var(--coffee-radius) - 2px);
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 0.5rem;
+            font-family: inherit;
+        }
+        
+        .login-btn:hover {
+            background: var(--coffee-primary-hover);
+        }
+        
+        .login-btn:active {
+            transform: scale(0.98);
+        }
+        
+        .error-message {
+            color: hsl(0, 84.2%, 60.2%);
+            font-size: 0.875rem;
+            margin-top: 0.75rem;
+            text-align: center;
+            padding: 0.75rem;
+            background: hsl(0, 84.2%, 60.2%, 0.1);
+            border-radius: calc(var(--coffee-radius) - 2px);
+            border: 1px solid hsl(0, 84.2%, 60.2%, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 1.5rem;">
+                <img src="/static/uploads/coffee-desk-name-icon.png" alt="Coffee Agent" style="height: 3rem; width: auto;">
+            </div>
+            <p>Sign in to access your AI Assistant</p>
+        </div>
+        
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" placeholder="Enter your email address" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="Enter your password" required>
+            </div>
+            
+            <button type="submit" class="login-btn">Sign In</button>
+        </form>
+        
+        <div id="errorMessage" class="error-message" style="display: none;"></div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            
+            // Basic validation
+            if (!email || !password) {
+                showError('Please fill in all fields');
+                return;
+            }
+            
+            if (password.length < 6) {
+                showError('Password must be at least 6 characters long');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: email,
+                        password: password
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Store user info in session storage
+                    sessionStorage.setItem('userName', email.split('@')[0]); // Use email prefix as name
+                    sessionStorage.setItem('userEmail', email);
+                    
+                    // Redirect to main chat page
+                    window.location.href = '/chat';
+                } else {
+                    showError(data.message || 'Login failed. Please try again.');
+                }
+            } catch (error) {
+                showError('Network error. Please try again.');
+            }
+        });
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

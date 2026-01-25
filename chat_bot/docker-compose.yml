@@ -1,0 +1,20 @@
+services:
+  chat-app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - FLASK_ENV=development
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SCALEKIT_CLIENT_ID=${SCALEKIT_CLIENT_ID}
+      - SCALEKIT_CLIENT_SECRET=${SCALEKIT_CLIENT_SECRET}
+      - SCALEKIT_ENV_URL=${SCALEKIT_ENV_URL}
+    volumes:
+      - .:/app
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
