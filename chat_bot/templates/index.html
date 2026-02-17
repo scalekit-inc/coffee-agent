@@ -81,6 +81,20 @@
                             <div class="integration-status-badge" id="notionStatus">Checking...</div>
                         </div>
                     </div>
+                    
+                    <div class="integration-card">
+                        <div class="integration-header">
+                            <span class="integration-icon">🐙</span>
+                            <span class="integration-name">GitHub</span>
+                        </div>
+                        <div class="integration-controls">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="githubToggle">
+                                <span class="slider"></span>
+                            </label>
+                            <div class="integration-status-badge" id="githubStatus">Checking...</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </aside>
@@ -90,7 +104,7 @@
             <div class="chat-header">
                 <div class="header-content">
                     <h2>Chat with Coffee Agent</h2>
-                    <p>I can help you manage emails, calendar events, and Notion pages</p>
+                    <p>I can help you manage emails, calendar events, Notion pages, and GitHub repositories</p>
                 </div>
             </div>
             
@@ -98,7 +112,7 @@
                 <div class="message ai-message">
                     <div class="message-avatar">☕</div>
                     <div class="message-content">
-                        <p>Hello! I'm Coffee Agent, your AI assistant with Gmail, Google Calendar, and Notion integration. I can help you manage your emails, calendar events, and Notion pages efficiently. What would you like to accomplish today?</p>
+                        <p>Hello! I'm Coffee Agent, your AI assistant with Gmail, Google Calendar, Notion, and GitHub integration. I can help you manage your emails, calendar events, Notion pages, and GitHub repositories efficiently. What would you like to accomplish today?</p>
                     </div>
                 </div>
             </div>
@@ -246,6 +260,48 @@
             <div class="modal-footer">
                 <button id="notionAuthDone" class="btn btn-primary">✅ I'm Done - Check Connection</button>
                 <button id="notionAuthCancel" class="btn btn-secondary">❌ Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GitHub Authorization Modal -->
+    <div id="githubModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🐙 GitHub Authorization Required</h3>
+                <button class="modal-close" id="githubModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>To use GitHub features, you need to authorize access to your GitHub account.</p>
+                <div class="auth-link-container">
+                    <a id="githubAuthLink" href="#" target="_blank" class="auth-link">
+                        <span class="auth-icon">🔗</span>
+                        <span class="auth-text">Click to Authorize GitHub Access</span>
+                        <span class="auth-arrow">↗</span>
+                    </a>
+                </div>
+                <div class="auth-steps">
+                    <div class="step">
+                        <span class="step-number">1</span>
+                        <span class="step-text">Click the authorization link above</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">2</span>
+                        <span class="step-text">Sign in with your GitHub account</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">3</span>
+                        <span class="step-text">Grant permission to access your GitHub repositories</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">4</span>
+                        <span class="step-text">Return here and click "I'm Done"</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="githubAuthDone" class="btn btn-primary">✅ I'm Done - Check Connection</button>
+                <button id="githubAuthCancel" class="btn btn-secondary">❌ Cancel</button>
             </div>
         </div>
     </div>

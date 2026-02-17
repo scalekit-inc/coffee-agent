@@ -86,7 +86,7 @@ class GmailIntegration:
             }
             
             response = self.connect.execute_tool(
-                tool_name="gmail_fetch_mails",
+                tool_name="`gmail_fetch_mails`",
                 identifier=self.user_id,
                 tool_input=tool_input
             )

@@ -15,6 +15,7 @@ class ChatBot {
         this.initGmailToggle();
         this.initCalendarToggle();
         this.initNotionToggle();
+        this.initGitHubToggle();
     }
     
     setupEventListeners() {
@@ -38,6 +39,12 @@ class ChatBot {
         const notionToggle = document.getElementById('notionToggle');
         if (notionToggle) {
             notionToggle.addEventListener('change', (e) => this.handleNotionToggle(e));
+        }
+        
+        // GitHub toggle event listener
+        const githubToggle = document.getElementById('githubToggle');
+        if (githubToggle) {
+            githubToggle.addEventListener('change', (e) => this.handleGitHubToggle(e));
         }
         
         // Modal event listeners
@@ -109,6 +116,30 @@ class ChatBot {
             notionModal.addEventListener('click', (e) => {
                 if (e.target === notionModal) {
                     this.hideNotionModal();
+                }
+            });
+        }
+        
+        // GitHub modal event listeners
+        const githubModalClose = document.getElementById('githubModalClose');
+        const githubAuthCancel = document.getElementById('githubAuthCancel');
+        const githubAuthDone = document.getElementById('githubAuthDone');
+        
+        if (githubModalClose) {
+            githubModalClose.addEventListener('click', () => this.hideGitHubModal());
+        }
+        if (githubAuthCancel) {
+            githubAuthCancel.addEventListener('click', () => this.hideGitHubModal());
+        }
+        if (githubAuthDone) {
+            githubAuthDone.addEventListener('click', () => this.handleGitHubAuthDone());
+        }
+        
+        const githubModal = document.getElementById('githubModal');
+        if (githubModal) {
+            githubModal.addEventListener('click', (e) => {
+                if (e.target === githubModal) {
+                    this.hideGitHubModal();
                 }
             });
         }
@@ -907,6 +938,118 @@ class ChatBot {
         calendarDiv.appendChild(calendarContent);
         this.chatMessages.appendChild(calendarDiv);
         this.scrollToBottom();
+    }
+    
+    async initGitHubToggle() {
+        try {
+            const response = await fetch('/api/github/status', {
+                headers: this.getUserHeaders()
+            });
+            const data = await response.json();
+            
+            const githubToggle = document.getElementById('githubToggle');
+            const githubStatus = document.getElementById('githubStatus');
+            
+            if (githubToggle && githubStatus) {
+                githubToggle.checked = data.enabled;
+                githubStatus.textContent = data.status === 'connected' ? 'Connected' : 'Disconnected';
+                githubStatus.className = `integration-status-badge ${data.enabled ? 'connected' : 'disconnected'}`;
+            }
+        } catch (error) {
+            console.error('Failed to get GitHub status:', error);
+        }
+    }
+    
+    async handleGitHubToggle(event) {
+        const isEnabled = event.target.checked;
+        const githubStatus = document.getElementById('githubStatus');
+        
+        try {
+            if (isEnabled) {
+                // Enable GitHub
+                githubStatus.textContent = 'Enabling...';
+                const response = await fetch('/api/github/enable', { 
+                    method: 'POST',
+                    headers: this.getUserHeaders()
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    if (data.status === 'needs_auth') {
+                        // Show authorization modal
+                        githubStatus.textContent = 'Auth Required';
+                        this.showGitHubAuthModal(data.auth_link);
+                    } else {
+                        githubStatus.textContent = 'Connected';
+                        githubStatus.className = 'integration-status-badge connected';
+                        this.addMessage('✅ **GitHub Integration Enabled!**\n\nYour GitHub account is now connected. I can help you manage your repositories and issues.', 'ai');
+                    }
+                } else {
+                    event.target.checked = false;
+                    githubStatus.textContent = 'Error';
+                    this.addMessage(`❌ **GitHub Integration Failed**\n\n${data.message}`, 'ai');
+                }
+            } else {
+                // Disable GitHub
+                githubStatus.textContent = 'Disconnected';
+                githubStatus.className = 'integration-status-badge disconnected';
+                this.addMessage('🔴 **GitHub Integration Disabled**\n\nGitHub features are now turned off.', 'ai');
+            }
+        } catch (error) {
+            console.error('GitHub toggle error:', error);
+            event.target.checked = !isEnabled;
+            githubStatus.textContent = 'Error';
+            this.addMessage('❌ **GitHub Operation Failed**\n\nAn error occurred while updating GitHub integration.', 'ai');
+        }
+    }
+    
+    showGitHubAuthModal(authLink) {
+        const modal = document.getElementById('githubModal');
+        const authLinkElement = document.getElementById('githubAuthLink');
+        
+        if (modal && authLinkElement) {
+            authLinkElement.href = authLink;
+            modal.style.display = 'block';
+        }
+    }
+    
+    hideGitHubModal() {
+        const modal = document.getElementById('githubModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+    
+    async handleGitHubAuthDone() {
+        const githubToggle = document.getElementById('githubToggle');
+        const githubStatus = document.getElementById('githubStatus');
+        
+        try {
+            githubStatus.textContent = 'Checking...';
+            this.hideGitHubModal();
+            
+            // Check the GitHub status again
+            const response = await fetch('/api/github/status', {
+                headers: this.getUserHeaders()
+            });
+            const data = await response.json();
+            
+            if (data.success && data.enabled) {
+                githubToggle.checked = true;
+                githubStatus.textContent = 'Connected';
+                githubStatus.className = 'integration-status-badge connected';
+                this.addMessage('✅ **GitHub Authorization Complete!**\n\nYour GitHub account is now connected. I can help you manage your repositories and issues efficiently.', 'ai');
+            } else {
+                githubToggle.checked = false;
+                githubStatus.textContent = 'Not Connected';
+                githubStatus.className = 'integration-status-badge disconnected';
+                this.addMessage('❌ **Authorization Not Complete**\n\nPlease complete the GitHub authorization process and try again.', 'ai');
+            }
+        } catch (error) {
+            console.error('GitHub auth check error:', error);
+            githubStatus.textContent = 'Error';
+            this.addMessage('❌ **Connection Check Failed**\n\nAn error occurred while checking the connection status.', 'ai');
+        }
     }
 }
 
