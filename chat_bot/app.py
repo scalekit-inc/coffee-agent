@@ -8,10 +8,12 @@ import logging
 from gmail_integration import GmailIntegration
 from calendar_integration import CalendarIntegration
 from notion_integration import NotionIntegration
+from github_integration import GitHubIntegration
 from config import (
     OPENAI_MODEL, OPENAI_MAX_TOKENS, OPENAI_TEMPERATURE, OPENAI_TIMEOUT_SEC,
     FUNCTION_GMAIL_FETCH_MAILS, FUNCTION_CALENDAR_FETCH_EVENTS,
     FUNCTION_CALENDAR_CREATE_EVENT, FUNCTION_NOTION_CREATE_PAGE, FUNCTION_NOTION_SEARCH_PAGES,
+    FUNCTION_GITHUB_LIST_REPOSITORIES, FUNCTION_GITHUB_LIST_ISSUES, FUNCTION_GITHUB_CREATE_ISSUE,
     USER_TIMEZONE, USER_TIMEZONE_OFFSET
 )
 
@@ -19,12 +21,13 @@ from config import (
 load_dotenv()
 
 # System Prompt for AI Assistant
-SYSTEM_PROMPT = f"""You are an AI assistant with Gmail, Google Calendar, and Notion integration.
+SYSTEM_PROMPT = f"""You are an AI assistant with Gmail, Google Calendar, Notion, and GitHub integration.
 
 RESPONSE FORMAT:
 - Emails: Brief summary, mention "emails displayed below". Use 'sender' field (From), not 'recipient' (To).
 - Calendar events: Brief summary only (1-2 sentences), mention "events displayed below". Never list individual events.
 - Notion pages: Brief summary, mention "pages displayed below" when showing search results.
+- GitHub: Brief summary of repositories or issues, mention key details like names, states, and URLs.
 
 TIMEZONE ({USER_TIMEZONE}, {USER_TIMEZONE_OFFSET}):
 - Fetching events: Convert user's date to UTC range. For date X, set time_min to start of X in UTC, time_max to start of next day in UTC.
@@ -32,7 +35,12 @@ TIMEZONE ({USER_TIMEZONE}, {USER_TIMEZONE_OFFSET}):
 
 NOTION:
 - Creating pages: Requires parent_page_id. Confirm when page is created.
-- Searching pages: Provide brief summary of results."""
+- Searching pages: Provide brief summary of results.
+
+GITHUB:
+- Listing repositories: Show key details like name, description, language, and stars.
+- Listing issues: Show issue number, title, state, and labels.
+- Creating issues: Confirm when issue is created with issue number and URL."""
 
 # Configure logging
 # Support DEBUG level via LOG_LEVEL env var for Cloud Run debugging
@@ -118,7 +126,8 @@ def get_user_integrations():
     return (
         GmailIntegration(user_id=user_id),
         CalendarIntegration(user_id=user_id),
-        NotionIntegration(user_id=user_id)
+        NotionIntegration(user_id=user_id),
+        GitHubIntegration(user_id=user_id)
     )
 
 def get_openai_final_response(messages, function_name=""):
@@ -136,7 +145,8 @@ def get_openai_final_response(messages, function_name=""):
         return None, f'Failed to get AI response: {str(e)}'
 
 def execute_function_call(function_name, function_args, gmail_integration_instance, 
-                          calendar_integration_instance, notion_integration_instance):
+                          calendar_integration_instance, notion_integration_instance,
+                          github_integration_instance):
     """Execute a function call and return the result"""
     if function_name == FUNCTION_GMAIL_FETCH_MAILS:
         return gmail_integration_instance.fetch_emails(
@@ -171,6 +181,24 @@ def execute_function_call(function_name, function_args, gmail_integration_instan
             query=function_args.get("query", ""),
             max_results=function_args.get("max_results", 10)
         )
+    elif function_name == FUNCTION_GITHUB_LIST_REPOSITORIES:
+        return github_integration_instance.list_repositories(
+            max_results=function_args.get("max_results", 10),
+            type=function_args.get("type", "owner")
+        )
+    elif function_name == FUNCTION_GITHUB_LIST_ISSUES:
+        return github_integration_instance.list_issues(
+            repository=function_args.get("repository", ""),
+            state=function_args.get("state", "open"),
+            max_results=function_args.get("max_results", 10)
+        )
+    elif function_name == FUNCTION_GITHUB_CREATE_ISSUE:
+        return github_integration_instance.create_issue(
+            repository=function_args.get("repository", ""),
+            title=function_args.get("title", ""),
+            body=function_args.get("body", ""),
+            labels=function_args.get("labels", "")
+        )
     else:
         raise ValueError(f"Unknown function: {function_name}")
 
@@ -191,7 +219,7 @@ def chat():
         ]
         
         # Get user-specific integrations
-        gmail_integration_instance, calendar_integration_instance, notion_integration_instance = get_user_integrations()
+        gmail_integration_instance, calendar_integration_instance, notion_integration_instance, github_integration_instance = get_user_integrations()
         
         # Get available tools based on integration status
         tools = []
@@ -206,6 +234,10 @@ def chat():
         notion_tools = notion_integration_instance.get_tools()
         tools.extend(notion_tools)
         logger.debug(f"Chat - user_id: {notion_integration_instance.user_id}, Notion tools available: {len(notion_tools)}")
+        
+        github_tools = github_integration_instance.get_tools()
+        tools.extend(github_tools)
+        logger.debug(f"Chat - user_id: {github_integration_instance.user_id}, GitHub tools available: {len(github_tools)}")
         
         logger.debug(f"Chat - Total tools available: {len(tools)}")
         
@@ -247,9 +279,10 @@ def chat():
                     'error': f'Failed to connect to OpenAI: {str(e)}'
                 }), 500
             
-            # Handle function calls if any
-            if response.choices[0].message.function_call:
-                function_call = response.choices[0].message.function_call
+            # Handle function calls if any (model may return text only — no function_call)
+            message = response.choices[0].message
+            function_call = getattr(message, "function_call", None)
+            if function_call:
                 function_name = function_call.name
                 function_args = json.loads(function_call.arguments)
                 
@@ -260,7 +293,8 @@ def chat():
                         function_args,
                         gmail_integration_instance,
                         calendar_integration_instance,
-                        notion_integration_instance
+                        notion_integration_instance,
+                        github_integration_instance
                     )
                 except Exception as e:
                     logger.error(f"Error executing function {function_name}: {str(e)}", exc_info=True)
@@ -269,7 +303,7 @@ def chat():
                     }), 500
                 
                 # Add function result to conversation
-                messages.append(response.choices[0].message)
+                messages.append(message)
                 messages.append({
                     "role": "function",
                     "name": function_name,
@@ -341,7 +375,7 @@ def health():
 def gmail_status():
     """Get Gmail integration status"""
     try:
-        gmail_integration_instance, _, _ = get_user_integrations()
+        gmail_integration_instance, _, _, _ = get_user_integrations()
         status = gmail_integration_instance.check_status()
         logger.debug(f"Gmail status check - user_id: {gmail_integration_instance.user_id}, status: {status}")
         return jsonify(status)
@@ -353,7 +387,7 @@ def gmail_status():
 def gmail_enable():
     """Enable Gmail integration"""
     try:
-        gmail_integration_instance, _, _ = get_user_integrations()
+        gmail_integration_instance, _, _, _ = get_user_integrations()
         logger.debug(f"Gmail enable - user_id: {gmail_integration_instance.user_id}")
         result = gmail_integration_instance.enable()
         logger.debug(f"Gmail enable result for user_id {gmail_integration_instance.user_id}: {result}")
@@ -366,7 +400,7 @@ def gmail_enable():
 def calendar_status():
     """Get Google Calendar integration status"""
     try:
-        _, calendar_integration_instance, _ = get_user_integrations()
+        _, calendar_integration_instance, _, _ = get_user_integrations()
         status = calendar_integration_instance.check_status()
         logger.debug(f"Calendar status check - user_id: {calendar_integration_instance.user_id}, status: {status}")
         return jsonify(status)
@@ -378,7 +412,7 @@ def calendar_status():
 def calendar_enable():
     """Enable Google Calendar integration"""
     try:
-        _, calendar_integration_instance, _ = get_user_integrations()
+        _, calendar_integration_instance, _, _ = get_user_integrations()
         logger.debug(f"Calendar enable - user_id: {calendar_integration_instance.user_id}")
         result = calendar_integration_instance.enable()
         logger.debug(f"Calendar enable result for user_id {calendar_integration_instance.user_id}: {result}")
@@ -391,7 +425,7 @@ def calendar_enable():
 def notion_status():
     """Get Notion integration status"""
     try:
-        _, _, notion_integration_instance = get_user_integrations()
+        _, _, notion_integration_instance, _ = get_user_integrations()
         status = notion_integration_instance.check_status()
         logger.debug(f"Notion status check - user_id: {notion_integration_instance.user_id}, status: {status}")
         return jsonify(status)
@@ -403,7 +437,7 @@ def notion_status():
 def notion_enable():
     """Enable Notion integration"""
     try:
-        _, _, notion_integration_instance = get_user_integrations()
+        _, _, notion_integration_instance, _ = get_user_integrations()
         logger.debug(f"Notion enable - user_id: {notion_integration_instance.user_id}")
         result = notion_integration_instance.enable()
         logger.debug(f"Notion enable result for user_id {notion_integration_instance.user_id}: {result}")
@@ -421,6 +455,31 @@ def notion_enable():
             "message": f"Error enabling Notion: {error_msg}",
             "status": "error"
         })
+
+@app.route('/api/github/status')
+def github_status():
+    """Get GitHub integration status"""
+    try:
+        _, _, _, github_integration_instance = get_user_integrations()
+        status = github_integration_instance.check_status()
+        logger.debug(f"GitHub status check - user_id: {github_integration_instance.user_id}, status: {status}")
+        return jsonify(status)
+    except Exception as e:
+        logger.error(f"Error checking GitHub status for user {github_integration_instance.user_id}: {str(e)}", exc_info=True)
+        return jsonify({"success": False, "message": f"Error checking GitHub status: {str(e)}"})
+
+@app.route('/api/github/enable', methods=['POST'])
+def github_enable():
+    """Enable GitHub integration"""
+    try:
+        _, _, _, github_integration_instance = get_user_integrations()
+        logger.debug(f"GitHub enable - user_id: {github_integration_instance.user_id}")
+        result = github_integration_instance.enable()
+        logger.debug(f"GitHub enable result for user_id {github_integration_instance.user_id}: {result}")
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error enabling GitHub for user {github_integration_instance.user_id}: {str(e)}", exc_info=True)
+        return jsonify({"success": False, "message": f"Error enabling GitHub: {str(e)}"})
 
 
 
