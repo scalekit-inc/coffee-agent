@@ -14,8 +14,9 @@ class ChatBot {
         this.adjustTextareaHeight();
         this.initGmailToggle();
         this.initCalendarToggle();
-        this.initNotionToggle();
+        // this.initNotionToggle(); // Disabled - Notion integration hidden from UI
         this.initGitHubToggle();
+        this.initSlackToggle();
     }
     
     setupEventListeners() {
@@ -35,16 +36,24 @@ class ChatBot {
             calendarToggle.addEventListener('change', (e) => this.handleCalendarToggle(e));
         }
         
-        // Notion toggle event listener
+        // Notion toggle event listener - Disabled (UI hidden)
+        /*
         const notionToggle = document.getElementById('notionToggle');
         if (notionToggle) {
             notionToggle.addEventListener('change', (e) => this.handleNotionToggle(e));
         }
+        */
         
         // GitHub toggle event listener
         const githubToggle = document.getElementById('githubToggle');
         if (githubToggle) {
             githubToggle.addEventListener('change', (e) => this.handleGitHubToggle(e));
+        }
+        
+        // Slack toggle event listener
+        const slackToggle = document.getElementById('slackToggle');
+        if (slackToggle) {
+            slackToggle.addEventListener('change', (e) => this.handleSlackToggle(e));
         }
         
         // Modal event listeners
@@ -77,7 +86,8 @@ class ChatBot {
             calendarAuthDone.addEventListener('click', () => this.handleCalendarAuthDone());
         }
         
-        // Notion modal event listeners
+        // Notion modal event listeners - Disabled (UI hidden)
+        /*
         const notionModalClose = document.getElementById('notionModalClose');
         const notionAuthCancel = document.getElementById('notionAuthCancel');
         const notionAuthDone = document.getElementById('notionAuthDone');
@@ -91,6 +101,7 @@ class ChatBot {
         if (notionAuthDone) {
             notionAuthDone.addEventListener('click', () => this.handleNotionAuthDone());
         }
+        */
         
         // Close modal when clicking outside
         const modal = document.getElementById('gmailModal');
@@ -111,6 +122,8 @@ class ChatBot {
             });
         }
         
+        // Notion modal event listeners - Disabled (UI hidden)
+        /*
         const notionModal = document.getElementById('notionModal');
         if (notionModal) {
             notionModal.addEventListener('click', (e) => {
@@ -119,6 +132,7 @@ class ChatBot {
                 }
             });
         }
+        */
         
         // GitHub modal event listeners
         const githubModalClose = document.getElementById('githubModalClose');
@@ -140,6 +154,30 @@ class ChatBot {
             githubModal.addEventListener('click', (e) => {
                 if (e.target === githubModal) {
                     this.hideGitHubModal();
+                }
+            });
+        }
+        
+        // Slack modal event listeners
+        const slackModalClose = document.getElementById('slackModalClose');
+        const slackAuthCancel = document.getElementById('slackAuthCancel');
+        const slackAuthDone = document.getElementById('slackAuthDone');
+        
+        if (slackModalClose) {
+            slackModalClose.addEventListener('click', () => this.hideSlackModal());
+        }
+        if (slackAuthCancel) {
+            slackAuthCancel.addEventListener('click', () => this.hideSlackModal());
+        }
+        if (slackAuthDone) {
+            slackAuthDone.addEventListener('click', () => this.handleSlackAuthDone());
+        }
+        
+        const slackModal = document.getElementById('slackModal');
+        if (slackModal) {
+            slackModal.addEventListener('click', (e) => {
+                if (e.target === slackModal) {
+                    this.hideSlackModal();
                 }
             });
         }
@@ -616,6 +654,8 @@ class ChatBot {
         }
     }
     
+    // Notion Integration Methods - Disabled (UI hidden)
+    /*
     showNotionAuthModal(authLink) {
         const modal = document.getElementById('notionModal');
         const authLinkElement = document.getElementById('notionAuthLink');
@@ -727,6 +767,7 @@ class ChatBot {
             this.addMessage('❌ **Notion Operation Failed**\n\nAn error occurred while updating Notion integration.', 'ai');
         }
     }
+    */
     
     displayCalendarEvents(calendarData) {
         // Handle different calendar data formats
@@ -1048,6 +1089,118 @@ class ChatBot {
         } catch (error) {
             console.error('GitHub auth check error:', error);
             githubStatus.textContent = 'Error';
+            this.addMessage('❌ **Connection Check Failed**\n\nAn error occurred while checking the connection status.', 'ai');
+        }
+    }
+    
+    async initSlackToggle() {
+        try {
+            const response = await fetch('/api/slack/status', {
+                headers: this.getUserHeaders()
+            });
+            const data = await response.json();
+            
+            const slackToggle = document.getElementById('slackToggle');
+            const slackStatus = document.getElementById('slackStatus');
+            
+            if (slackToggle && slackStatus) {
+                slackToggle.checked = data.enabled;
+                slackStatus.textContent = data.status === 'connected' ? 'Connected' : 'Disconnected';
+                slackStatus.className = `integration-status-badge ${data.enabled ? 'connected' : 'disconnected'}`;
+            }
+        } catch (error) {
+            console.error('Failed to get Slack status:', error);
+        }
+    }
+    
+    async handleSlackToggle(event) {
+        const isEnabled = event.target.checked;
+        const slackStatus = document.getElementById('slackStatus');
+        
+        try {
+            if (isEnabled) {
+                // Enable Slack
+                slackStatus.textContent = 'Enabling...';
+                const response = await fetch('/api/slack/enable', { 
+                    method: 'POST',
+                    headers: this.getUserHeaders()
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    if (data.status === 'needs_auth') {
+                        // Show authorization modal
+                        slackStatus.textContent = 'Auth Required';
+                        this.showSlackAuthModal(data.auth_link);
+                    } else {
+                        slackStatus.textContent = 'Connected';
+                        slackStatus.className = 'integration-status-badge connected';
+                        this.addMessage('✅ **Slack Integration Enabled!**\n\nYour Slack workspace is now connected. I can help you manage your channels and messages.', 'ai');
+                    }
+                } else {
+                    event.target.checked = false;
+                    slackStatus.textContent = 'Error';
+                    this.addMessage(`❌ **Slack Integration Failed**\n\n${data.message}`, 'ai');
+                }
+            } else {
+                // Disable Slack
+                slackStatus.textContent = 'Disconnected';
+                slackStatus.className = 'integration-status-badge disconnected';
+                this.addMessage('🔴 **Slack Integration Disabled**\n\nSlack features are now turned off.', 'ai');
+            }
+        } catch (error) {
+            console.error('Slack toggle error:', error);
+            event.target.checked = !isEnabled;
+            slackStatus.textContent = 'Error';
+            this.addMessage('❌ **Slack Operation Failed**\n\nAn error occurred while updating Slack integration.', 'ai');
+        }
+    }
+    
+    showSlackAuthModal(authLink) {
+        const modal = document.getElementById('slackModal');
+        const authLinkElement = document.getElementById('slackAuthLink');
+        
+        if (modal && authLinkElement) {
+            authLinkElement.href = authLink;
+            modal.style.display = 'block';
+        }
+    }
+    
+    hideSlackModal() {
+        const modal = document.getElementById('slackModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+    
+    async handleSlackAuthDone() {
+        const slackToggle = document.getElementById('slackToggle');
+        const slackStatus = document.getElementById('slackStatus');
+        
+        try {
+            slackStatus.textContent = 'Checking...';
+            this.hideSlackModal();
+            
+            // Check the Slack status again
+            const response = await fetch('/api/slack/status', {
+                headers: this.getUserHeaders()
+            });
+            const data = await response.json();
+            
+            if (data.success && data.enabled) {
+                slackToggle.checked = true;
+                slackStatus.textContent = 'Connected';
+                slackStatus.className = 'integration-status-badge connected';
+                this.addMessage('✅ **Slack Authorization Complete!**\n\nYour Slack workspace is now connected. I can help you manage your channels and messages efficiently.', 'ai');
+            } else {
+                slackToggle.checked = false;
+                slackStatus.textContent = 'Not Connected';
+                slackStatus.className = 'integration-status-badge disconnected';
+                this.addMessage('❌ **Authorization Not Complete**\n\nPlease complete the Slack authorization process and try again.', 'ai');
+            }
+        } catch (error) {
+            console.error('Slack auth check error:', error);
+            slackStatus.textContent = 'Error';
             this.addMessage('❌ **Connection Check Failed**\n\nAn error occurred while checking the connection status.', 'ai');
         }
     }

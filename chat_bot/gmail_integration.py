@@ -86,7 +86,7 @@ class GmailIntegration:
             }
             
             response = self.connect.execute_tool(
-                tool_name="`gmail_fetch_mails`",
+                tool_name="gmail_fetch_mails",
                 identifier=self.user_id,
                 tool_input=tool_input
             )
@@ -140,6 +140,13 @@ class GmailIntegration:
                 "message": f"Successfully fetched {len(emails_list) if emails_list else max_results} emails"
             }
             
+        except ScalekitNotFoundException:
+            self.is_enabled = False
+            logger.warning(f"Gmail connected account not found for user {self.user_id} - user may need to reconnect")
+            return {
+                "success": False,
+                "message": "Gmail is not connected for this account. Please connect Gmail from the integrations settings and try again."
+            }
         except Exception as e:
             logger.error(f"Failed to fetch emails for user {self.user_id}: {str(e)}", exc_info=True)
             return {"success": False, "message": f"Failed to fetch emails: {str(e)}"}

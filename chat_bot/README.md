@@ -13,7 +13,9 @@ A modern, coffee-themed AI chat application built with Flask and OpenAI, featuri
 - 📧 **Gmail Integration**: Read and manage emails with ScaleKit
 - 📅 **Calendar Integration**: Manage Google Calendar events
 - 📝 **Notion Integration**: Create and search Notion pages
-- 🔌 **Smart Tool Integration**: AI automatically uses Gmail/Calendar/Notion tools when available
+- 🐙 **GitHub Integration**: Manage repositories and issues
+- 💬 **Slack Integration**: Send messages, list channels, and manage workspace
+- 🔌 **Smart Tool Integration**: AI automatically uses Gmail/Calendar/Notion/GitHub/Slack tools when available
 - 💬 **Real-time Chat Interface**: Modern, responsive chat UI with sidebar layout
 - 🎨 **Beautiful Design**: Coffee-themed interface with elegant typography
 - 📱 **Mobile Responsive**: Works perfectly on all devices
@@ -130,6 +132,14 @@ docker run -p 5000:5000 --env-file .env chat-bot
 - `GET /api/notion/status` - Get Notion connection status
 - `POST /api/notion/enable` - Enable Notion integration
 
+**GitHub:**
+- `GET /api/github/status` - Get GitHub connection status
+- `POST /api/github/enable` - Enable GitHub integration
+
+**Slack:**
+- `GET /api/slack/status` - Get Slack connection status
+- `POST /api/slack/enable` - Enable Slack integration
+
 ## Project Structure
 
 ```
@@ -139,6 +149,8 @@ chat_bot/
 ├── gmail_integration.py   # Gmail integration module
 ├── calendar_integration.py  # Google Calendar integration module
 ├── notion_integration.py    # Notion integration module
+├── github_integration.py    # GitHub integration module
+├── slack_integration.py     # Slack integration module
 ├── scalekit_client.py       # Shared ScaleKit client
 ├── requirements.txt       # Python dependencies
 ├── setup.sh              # Unix/macOS setup script
@@ -204,6 +216,34 @@ chat_bot/
 **Usage Examples:**
 - "create a Notion page titled 'Meeting Notes'"
 - "search for pages about 'project planning'"
+
+### GitHub Integration
+
+**Capabilities:**
+- 📂 **List Repositories**: View all repositories you have access to
+- 🐛 **List Issues**: View issues from specific repositories
+- ➕ **Create Issues**: Create new issues in repositories
+
+**Usage Examples:**
+- "list my GitHub repositories"
+- "show open issues in octocat/Hello-World"
+- "create an issue titled 'Fix bug' in my repository"
+
+### Slack Integration
+
+**Capabilities:**
+- 💬 **Send Messages**: Send messages to channels or direct messages
+- 📋 **List Channels**: View all channels in your workspace
+- 📨 **Fetch Messages**: Retrieve conversation history from channels
+- ➕ **Create Channels**: Create new public or private channels
+- 👥 **List Users**: View all users in your workspace
+
+**Usage Examples:**
+- "send a message to #general saying 'Hello team!'"
+- "list all Slack channels"
+- "show recent messages from #project-updates"
+- "create a new channel called project-alpha"
+- "list all users in my Slack workspace"
 
 ## Customization
 
