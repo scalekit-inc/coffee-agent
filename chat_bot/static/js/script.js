@@ -17,6 +17,7 @@ class ChatBot {
         // this.initNotionToggle(); // Disabled - Notion integration hidden from UI
         this.initGitHubToggle();
         this.initSlackToggle();
+        this.initHubSpotToggle();
     }
     
     setupEventListeners() {
@@ -54,6 +55,12 @@ class ChatBot {
         const slackToggle = document.getElementById('slackToggle');
         if (slackToggle) {
             slackToggle.addEventListener('change', (e) => this.handleSlackToggle(e));
+        }
+        
+        // HubSpot toggle event listener
+        const hubspotToggle = document.getElementById('hubspotToggle');
+        if (hubspotToggle) {
+            hubspotToggle.addEventListener('change', (e) => this.handleHubSpotToggle(e));
         }
         
         // Modal event listeners
@@ -178,6 +185,30 @@ class ChatBot {
             slackModal.addEventListener('click', (e) => {
                 if (e.target === slackModal) {
                     this.hideSlackModal();
+                }
+            });
+        }
+        
+        // HubSpot modal event listeners
+        const hubspotModalClose = document.getElementById('hubspotModalClose');
+        const hubspotAuthCancel = document.getElementById('hubspotAuthCancel');
+        const hubspotAuthDone = document.getElementById('hubspotAuthDone');
+        
+        if (hubspotModalClose) {
+            hubspotModalClose.addEventListener('click', () => this.hideHubSpotModal());
+        }
+        if (hubspotAuthCancel) {
+            hubspotAuthCancel.addEventListener('click', () => this.hideHubSpotModal());
+        }
+        if (hubspotAuthDone) {
+            hubspotAuthDone.addEventListener('click', () => this.handleHubSpotAuthDone());
+        }
+        
+        const hubspotModal = document.getElementById('hubspotModal');
+        if (hubspotModal) {
+            hubspotModal.addEventListener('click', (e) => {
+                if (e.target === hubspotModal) {
+                    this.hideHubSpotModal();
                 }
             });
         }
@@ -1201,6 +1232,118 @@ class ChatBot {
         } catch (error) {
             console.error('Slack auth check error:', error);
             slackStatus.textContent = 'Error';
+            this.addMessage('❌ **Connection Check Failed**\n\nAn error occurred while checking the connection status.', 'ai');
+        }
+    }
+    
+    async initHubSpotToggle() {
+        try {
+            const response = await fetch('/api/hubspot/status', {
+                headers: this.getUserHeaders()
+            });
+            const data = await response.json();
+            
+            const hubspotToggle = document.getElementById('hubspotToggle');
+            const hubspotStatus = document.getElementById('hubspotStatus');
+            
+            if (hubspotToggle && hubspotStatus) {
+                hubspotToggle.checked = data.enabled;
+                hubspotStatus.textContent = data.status === 'connected' ? 'Connected' : 'Disconnected';
+                hubspotStatus.className = `integration-status-badge ${data.enabled ? 'connected' : 'disconnected'}`;
+            }
+        } catch (error) {
+            console.error('Failed to get HubSpot status:', error);
+        }
+    }
+    
+    async handleHubSpotToggle(event) {
+        const isEnabled = event.target.checked;
+        const hubspotStatus = document.getElementById('hubspotStatus');
+        
+        try {
+            if (isEnabled) {
+                // Enable HubSpot
+                hubspotStatus.textContent = 'Enabling...';
+                const response = await fetch('/api/hubspot/enable', { 
+                    method: 'POST',
+                    headers: this.getUserHeaders()
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    if (data.status === 'needs_auth') {
+                        // Show authorization modal
+                        hubspotStatus.textContent = 'Auth Required';
+                        this.showHubSpotAuthModal(data.auth_link);
+                    } else {
+                        hubspotStatus.textContent = 'Connected';
+                        hubspotStatus.className = 'integration-status-badge connected';
+                        this.addMessage('✅ **HubSpot Integration Enabled!**\n\nYour HubSpot CRM is now connected. I can help you manage your contacts and companies.', 'ai');
+                    }
+                } else {
+                    event.target.checked = false;
+                    hubspotStatus.textContent = 'Error';
+                    this.addMessage(`❌ **HubSpot Integration Failed**\n\n${data.message}`, 'ai');
+                }
+            } else {
+                // Disable HubSpot
+                hubspotStatus.textContent = 'Disconnected';
+                hubspotStatus.className = 'integration-status-badge disconnected';
+                this.addMessage('🔴 **HubSpot Integration Disabled**\n\nHubSpot features are now turned off.', 'ai');
+            }
+        } catch (error) {
+            console.error('HubSpot toggle error:', error);
+            event.target.checked = !isEnabled;
+            hubspotStatus.textContent = 'Error';
+            this.addMessage('❌ **HubSpot Operation Failed**\n\nAn error occurred while updating HubSpot integration.', 'ai');
+        }
+    }
+    
+    showHubSpotAuthModal(authLink) {
+        const modal = document.getElementById('hubspotModal');
+        const authLinkElement = document.getElementById('hubspotAuthLink');
+        
+        if (modal && authLinkElement) {
+            authLinkElement.href = authLink;
+            modal.style.display = 'block';
+        }
+    }
+    
+    hideHubSpotModal() {
+        const modal = document.getElementById('hubspotModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+    
+    async handleHubSpotAuthDone() {
+        const hubspotToggle = document.getElementById('hubspotToggle');
+        const hubspotStatus = document.getElementById('hubspotStatus');
+        
+        try {
+            hubspotStatus.textContent = 'Checking...';
+            this.hideHubSpotModal();
+            
+            // Check the HubSpot status again
+            const response = await fetch('/api/hubspot/status', {
+                headers: this.getUserHeaders()
+            });
+            const data = await response.json();
+            
+            if (data.success && data.enabled) {
+                hubspotToggle.checked = true;
+                hubspotStatus.textContent = 'Connected';
+                hubspotStatus.className = 'integration-status-badge connected';
+                this.addMessage('✅ **HubSpot Authorization Complete!**\n\nYour HubSpot CRM is now connected. I can help you manage your contacts and companies efficiently.', 'ai');
+            } else {
+                hubspotToggle.checked = false;
+                hubspotStatus.textContent = 'Not Connected';
+                hubspotStatus.className = 'integration-status-badge disconnected';
+                this.addMessage('❌ **Authorization Not Complete**\n\nPlease complete the HubSpot authorization process and try again.', 'ai');
+            }
+        } catch (error) {
+            console.error('HubSpot auth check error:', error);
+            hubspotStatus.textContent = 'Error';
             this.addMessage('❌ **Connection Check Failed**\n\nAn error occurred while checking the connection status.', 'ai');
         }
     }

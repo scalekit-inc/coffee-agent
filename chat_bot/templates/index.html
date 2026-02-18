@@ -127,6 +127,24 @@
                             <div class="integration-status-badge" id="slackStatus">Checking...</div>
                         </div>
                     </div>
+                    
+                    <div class="integration-card">
+                        <div class="integration-header">
+                            <span class="integration-icon">
+                                <svg width="20" height="20" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M267.4 211.6c-25.1 23.7-40.8 57.3-40.8 94.6 0 29.3 9.7 56.3 26 78L203.1 434c-4.4-1.6-9.1-2.5-14-2.5-10.8 0-20.9 4.2-28.5 11.8-7.6 7.6-11.8 17.8-11.8 28.6s4.2 20.9 11.8 28.5c7.6 7.6 17.8 11.6 28.5 11.6 10.8 0 20.9-3.9 28.6-11.6 7.6-7.6 11.8-17.8 11.8-28.5 0-4.2-.6-8.2-1.9-12.1l50-50.2c22 16.9 49.4 26.9 79.3 26.9 71.9 0 130-58.3 130-130.2 0-65.2-47.7-119.2-110.2-128.7V116c17.5-7.4 28.2-23.8 28.2-42.9 0-26.1-20.9-47.9-47-47.9S311 47 311 73.1c0 19.1 10.7 35.5 28.2 42.9v61.2c-15.2 2.1-29.6 6.7-42.7 13.6-27.6-20.9-117.5-85.7-168.9-124.8 1.2-4.4 2-9 2-13.8C129.6 23.4 106.3 0 77.3 0 48.3 0 25 23.4 25 52.2c0 28.9 23.3 52.2 52.3 52.2 9.8 0 18.9-2.9 26.8-7.6l163.2 114.7zm89.5 163.6c-38.1 0-69-30.9-69-69s30.9-69 69-69 69 30.9 69 69-30.9 69-69 69z" fill="#FF7A59"/>
+                                </svg>
+                            </span>
+                            <span class="integration-name">HubSpot</span>
+                        </div>
+                        <div class="integration-controls">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="hubspotToggle">
+                                <span class="slider"></span>
+                            </label>
+                            <div class="integration-status-badge" id="hubspotStatus">Checking...</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </aside>
@@ -136,7 +154,7 @@
             <div class="chat-header">
                 <div class="header-content">
                     <h2>Chat with Coffee Agent</h2>
-                    <p>I can help you manage emails, calendar events, GitHub repositories, and Slack messages</p>
+                    <p>I can help you manage emails, calendar events, GitHub repositories, Slack messages, and HubSpot CRM</p>
                 </div>
             </div>
             
@@ -144,7 +162,7 @@
                 <div class="message ai-message">
                     <div class="message-avatar">☕</div>
                     <div class="message-content">
-                        <p>Hello! I'm Coffee Agent, your AI assistant with Gmail, Google Calendar, GitHub, and Slack integration. I can help you manage your emails, calendar events, GitHub repositories, and Slack messages efficiently. What would you like to accomplish today?</p>
+                        <p>Hello! I'm Coffee Agent, your AI assistant with Gmail, Google Calendar, GitHub, Slack, and HubSpot integration. I can help you manage your emails, calendar events, GitHub repositories, Slack messages, and HubSpot CRM efficiently. What would you like to accomplish today?</p>
                     </div>
                 </div>
             </div>
@@ -378,6 +396,48 @@
             <div class="modal-footer">
                 <button id="slackAuthDone" class="btn btn-primary">✅ I'm Done - Check Connection</button>
                 <button id="slackAuthCancel" class="btn btn-secondary">❌ Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HubSpot Authorization Modal -->
+    <div id="hubspotModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🎯 HubSpot Authorization Required</h3>
+                <button class="modal-close" id="hubspotModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>To use HubSpot CRM features, you need to authorize access to your HubSpot account.</p>
+                <div class="auth-link-container">
+                    <a id="hubspotAuthLink" href="#" target="_blank" class="auth-link">
+                        <span class="auth-icon">🔗</span>
+                        <span class="auth-text">Click to Authorize HubSpot Access</span>
+                        <span class="auth-arrow">↗</span>
+                    </a>
+                </div>
+                <div class="auth-steps">
+                    <div class="step">
+                        <span class="step-number">1</span>
+                        <span class="step-text">Click the authorization link above</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">2</span>
+                        <span class="step-text">Sign in with your HubSpot account</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">3</span>
+                        <span class="step-text">Grant permission to access your HubSpot CRM</span>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">4</span>
+                        <span class="step-text">Return here and click "I'm Done"</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="hubspotAuthDone" class="btn btn-primary">✅ I'm Done - Check Connection</button>
+                <button id="hubspotAuthCancel" class="btn btn-secondary">❌ Cancel</button>
             </div>
         </div>
     </div>
