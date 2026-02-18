@@ -10,6 +10,7 @@ from calendar_integration import CalendarIntegration
 from notion_integration import NotionIntegration
 from github_integration import GitHubIntegration
 from slack_integration import SlackIntegration
+from hubspot_integration import HubSpotIntegration
 from config import (
     OPENAI_MODEL, OPENAI_MAX_TOKENS, OPENAI_TEMPERATURE, OPENAI_TIMEOUT_SEC,
     FUNCTION_GMAIL_FETCH_MAILS, FUNCTION_CALENDAR_FETCH_EVENTS,
@@ -17,6 +18,8 @@ from config import (
     FUNCTION_GITHUB_LIST_REPOSITORIES, FUNCTION_GITHUB_LIST_ISSUES, FUNCTION_GITHUB_CREATE_ISSUE,
     FUNCTION_SLACK_SEND_MESSAGE, FUNCTION_SLACK_LIST_CHANNELS, FUNCTION_SLACK_FETCH_CONVERSATION_HISTORY,
     FUNCTION_SLACK_CREATE_CHANNEL, FUNCTION_SLACK_LIST_USERS,
+    FUNCTION_HUBSPOT_LIST_CONTACTS, FUNCTION_HUBSPOT_CREATE_CONTACT, FUNCTION_HUBSPOT_SEARCH_CONTACTS,
+    FUNCTION_HUBSPOT_LIST_COMPANIES,
     USER_TIMEZONE, USER_TIMEZONE_OFFSET
 )
 
@@ -24,7 +27,7 @@ from config import (
 load_dotenv()
 
 # System Prompt for AI Assistant
-SYSTEM_PROMPT = f"""You are an AI assistant with Gmail, Google Calendar, Notion, GitHub, and Slack integration.
+SYSTEM_PROMPT = f"""You are an AI assistant with Gmail, Google Calendar, Notion, GitHub, Slack, and HubSpot integration.
 
 RESPONSE FORMAT:
 - Emails: Brief summary, mention "emails displayed below". Use 'sender' field (From), not 'recipient' (To).
@@ -32,6 +35,7 @@ RESPONSE FORMAT:
 - Notion pages: Brief summary, mention "pages displayed below" when showing search results.
 - GitHub: Brief summary of repositories or issues, mention key details like names, states, and URLs.
 - Slack: Brief summary of channels, messages, or users. Mention key details like channel names and message counts.
+- HubSpot: Brief summary of contacts or companies. Mention key details like names, emails, and company information.
 
 TIMEZONE ({USER_TIMEZONE}, {USER_TIMEZONE_OFFSET}):
 - Fetching events: Convert user's date to UTC range. For date X, set time_min to start of X in UTC, time_max to start of next day in UTC.
@@ -50,7 +54,13 @@ SLACK:
 - Sending messages: Use channel name (#channel-name) or channel ID. Confirm when message is sent.
 - Listing channels: Show channel names, member counts, and purposes.
 - Fetching messages: Show recent messages with user and timestamp information.
-- Creating channels: Confirm when channel is created with channel name."""
+- Creating channels: Confirm when channel is created with channel name.
+
+HUBSPOT:
+- Listing contacts: Show contact names, emails, companies, and job titles.
+- Creating contacts: Confirm when contact is created with email address.
+- Searching contacts: Show matching contacts with relevant details.
+- Listing companies: Show company names, domains, industries, and locations."""
 
 # Configure logging
 # Support DEBUG level via LOG_LEVEL env var for Cloud Run debugging
@@ -138,7 +148,8 @@ def get_user_integrations():
         CalendarIntegration(user_id=user_id),
         NotionIntegration(user_id=user_id),
         GitHubIntegration(user_id=user_id),
-        SlackIntegration(user_id=user_id)
+        SlackIntegration(user_id=user_id),
+        HubSpotIntegration(user_id=user_id)
     )
 
 def get_openai_final_response(messages, function_name=""):
@@ -157,7 +168,8 @@ def get_openai_final_response(messages, function_name=""):
 
 def execute_function_call(function_name, function_args, gmail_integration_instance, 
                           calendar_integration_instance, notion_integration_instance,
-                          github_integration_instance, slack_integration_instance):
+                          github_integration_instance, slack_integration_instance,
+                          hubspot_integration_instance):
     """Execute a function call and return the result"""
     if function_name == FUNCTION_GMAIL_FETCH_MAILS:
         return gmail_integration_instance.fetch_emails(
@@ -235,6 +247,28 @@ def execute_function_call(function_name, function_args, gmail_integration_instan
         return slack_integration_instance.list_users(
             max_results=function_args.get("max_results", 100)
         )
+    elif function_name == FUNCTION_HUBSPOT_LIST_CONTACTS:
+        return hubspot_integration_instance.list_contacts(
+            max_results=function_args.get("max_results", 10)
+        )
+    elif function_name == FUNCTION_HUBSPOT_CREATE_CONTACT:
+        return hubspot_integration_instance.create_contact(
+            email=function_args.get("email", ""),
+            firstname=function_args.get("firstname", ""),
+            lastname=function_args.get("lastname", ""),
+            company=function_args.get("company", ""),
+            phone=function_args.get("phone", ""),
+            jobtitle=function_args.get("jobtitle", "")
+        )
+    elif function_name == FUNCTION_HUBSPOT_SEARCH_CONTACTS:
+        return hubspot_integration_instance.search_contacts(
+            query=function_args.get("query", ""),
+            max_results=function_args.get("max_results", 10)
+        )
+    elif function_name == FUNCTION_HUBSPOT_LIST_COMPANIES:
+        return hubspot_integration_instance.list_companies(
+            max_results=function_args.get("max_results", 10)
+        )
     else:
         raise ValueError(f"Unknown function: {function_name}")
 
@@ -255,7 +289,7 @@ def chat():
         ]
         
         # Get user-specific integrations
-        gmail_integration_instance, calendar_integration_instance, notion_integration_instance, github_integration_instance, slack_integration_instance = get_user_integrations()
+        gmail_integration_instance, calendar_integration_instance, notion_integration_instance, github_integration_instance, slack_integration_instance, hubspot_integration_instance = get_user_integrations()
         
         # Get available tools based on integration status
         tools = []
@@ -278,6 +312,10 @@ def chat():
         slack_tools = slack_integration_instance.get_tools()
         tools.extend(slack_tools)
         logger.debug(f"Chat - user_id: {slack_integration_instance.user_id}, Slack tools available: {len(slack_tools)}")
+        
+        hubspot_tools = hubspot_integration_instance.get_tools()
+        tools.extend(hubspot_tools)
+        logger.debug(f"Chat - user_id: {hubspot_integration_instance.user_id}, HubSpot tools available: {len(hubspot_tools)}")
         
         logger.debug(f"Chat - Total tools available: {len(tools)}")
         
@@ -335,7 +373,8 @@ def chat():
                         calendar_integration_instance,
                         notion_integration_instance,
                         github_integration_instance,
-                        slack_integration_instance
+                        slack_integration_instance,
+                        hubspot_integration_instance
                     )
                 except Exception as e:
                     logger.error(f"Error executing function {function_name}: {str(e)}", exc_info=True)
@@ -416,7 +455,7 @@ def health():
 def gmail_status():
     """Get Gmail integration status"""
     try:
-        gmail_integration_instance, _, _, _, _ = get_user_integrations()
+        gmail_integration_instance, _, _, _, _, _ = get_user_integrations()
         status = gmail_integration_instance.check_status()
         logger.debug(f"Gmail status check - user_id: {gmail_integration_instance.user_id}, status: {status}")
         return jsonify(status)
@@ -428,7 +467,7 @@ def gmail_status():
 def gmail_enable():
     """Enable Gmail integration"""
     try:
-        gmail_integration_instance, _, _, _, _ = get_user_integrations()
+        gmail_integration_instance, _, _, _, _, _ = get_user_integrations()
         logger.debug(f"Gmail enable - user_id: {gmail_integration_instance.user_id}")
         result = gmail_integration_instance.enable()
         logger.debug(f"Gmail enable result for user_id {gmail_integration_instance.user_id}: {result}")
@@ -441,7 +480,7 @@ def gmail_enable():
 def calendar_status():
     """Get Google Calendar integration status"""
     try:
-        _, calendar_integration_instance, _, _, _ = get_user_integrations()
+        _, calendar_integration_instance, _, _, _, _ = get_user_integrations()
         status = calendar_integration_instance.check_status()
         logger.debug(f"Calendar status check - user_id: {calendar_integration_instance.user_id}, status: {status}")
         return jsonify(status)
@@ -453,7 +492,7 @@ def calendar_status():
 def calendar_enable():
     """Enable Google Calendar integration"""
     try:
-        _, calendar_integration_instance, _, _, _ = get_user_integrations()
+        _, calendar_integration_instance, _, _, _, _ = get_user_integrations()
         logger.debug(f"Calendar enable - user_id: {calendar_integration_instance.user_id}")
         result = calendar_integration_instance.enable()
         logger.debug(f"Calendar enable result for user_id {calendar_integration_instance.user_id}: {result}")
@@ -466,7 +505,7 @@ def calendar_enable():
 def notion_status():
     """Get Notion integration status"""
     try:
-        _, _, notion_integration_instance, _, _ = get_user_integrations()
+        _, _, notion_integration_instance, _, _, _ = get_user_integrations()
         status = notion_integration_instance.check_status()
         logger.debug(f"Notion status check - user_id: {notion_integration_instance.user_id}, status: {status}")
         return jsonify(status)
@@ -478,7 +517,7 @@ def notion_status():
 def notion_enable():
     """Enable Notion integration"""
     try:
-        _, _, notion_integration_instance, _, _ = get_user_integrations()
+        _, _, notion_integration_instance, _, _, _ = get_user_integrations()
         logger.debug(f"Notion enable - user_id: {notion_integration_instance.user_id}")
         result = notion_integration_instance.enable()
         logger.debug(f"Notion enable result for user_id {notion_integration_instance.user_id}: {result}")
@@ -501,7 +540,7 @@ def notion_enable():
 def github_status():
     """Get GitHub integration status"""
     try:
-        _, _, _, github_integration_instance, _ = get_user_integrations()
+        _, _, _, github_integration_instance, _, _ = get_user_integrations()
         status = github_integration_instance.check_status()
         logger.debug(f"GitHub status check - user_id: {github_integration_instance.user_id}, status: {status}")
         return jsonify(status)
@@ -513,7 +552,7 @@ def github_status():
 def github_enable():
     """Enable GitHub integration"""
     try:
-        _, _, _, github_integration_instance, _ = get_user_integrations()
+        _, _, _, github_integration_instance, _, _ = get_user_integrations()
         logger.debug(f"GitHub enable - user_id: {github_integration_instance.user_id}")
         result = github_integration_instance.enable()
         logger.debug(f"GitHub enable result for user_id {github_integration_instance.user_id}: {result}")
@@ -526,7 +565,7 @@ def github_enable():
 def slack_status():
     """Get Slack integration status"""
     try:
-        _, _, _, _, slack_integration_instance = get_user_integrations()
+        _, _, _, _, slack_integration_instance, _ = get_user_integrations()
         status = slack_integration_instance.check_status()
         logger.debug(f"Slack status check - user_id: {slack_integration_instance.user_id}, status: {status}")
         return jsonify(status)
@@ -538,7 +577,7 @@ def slack_status():
 def slack_enable():
     """Enable Slack integration"""
     try:
-        _, _, _, _, slack_integration_instance = get_user_integrations()
+        _, _, _, _, slack_integration_instance, _ = get_user_integrations()
         logger.debug(f"Slack enable - user_id: {slack_integration_instance.user_id}")
         result = slack_integration_instance.enable()
         logger.debug(f"Slack enable result for user_id {slack_integration_instance.user_id}: {result}")
@@ -546,6 +585,31 @@ def slack_enable():
     except Exception as e:
         logger.error(f"Error enabling Slack for user {slack_integration_instance.user_id}: {str(e)}", exc_info=True)
         return jsonify({"success": False, "message": f"Error enabling Slack: {str(e)}"})
+
+@app.route('/api/hubspot/status')
+def hubspot_status():
+    """Get HubSpot integration status"""
+    try:
+        _, _, _, _, _, hubspot_integration_instance = get_user_integrations()
+        status = hubspot_integration_instance.check_status()
+        logger.debug(f"HubSpot status check - user_id: {hubspot_integration_instance.user_id}, status: {status}")
+        return jsonify(status)
+    except Exception as e:
+        logger.error(f"Error checking HubSpot status for user {hubspot_integration_instance.user_id}: {str(e)}", exc_info=True)
+        return jsonify({"success": False, "message": f"Error checking HubSpot status: {str(e)}"})
+
+@app.route('/api/hubspot/enable', methods=['POST'])
+def hubspot_enable():
+    """Enable HubSpot integration"""
+    try:
+        _, _, _, _, _, hubspot_integration_instance = get_user_integrations()
+        logger.debug(f"HubSpot enable - user_id: {hubspot_integration_instance.user_id}")
+        result = hubspot_integration_instance.enable()
+        logger.debug(f"HubSpot enable result for user_id {hubspot_integration_instance.user_id}: {result}")
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error enabling HubSpot for user {hubspot_integration_instance.user_id}: {str(e)}", exc_info=True)
+        return jsonify({"success": False, "message": f"Error enabling HubSpot: {str(e)}"})
 
 
 if __name__ == '__main__':
