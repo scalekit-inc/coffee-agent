@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 import json
 import logging
+from types import SimpleNamespace
 from gmail_integration import GmailIntegration
 from calendar_integration import CalendarIntegration
 from notion_integration import NotionIntegration
@@ -158,7 +159,7 @@ def get_openai_final_response(messages, function_name=""):
         response = openai.ChatCompletion.create(
             model=OPENAI_MODEL,
             messages=messages,
-            max_tokens=OPENAI_MAX_TOKENS,
+            max_completion_tokens=OPENAI_MAX_TOKENS,
             temperature=OPENAI_TEMPERATURE
         )
         return response, None
@@ -325,18 +326,65 @@ def chat():
                 'error': 'OpenAI API key is not configured. Please set OPENAI_API_KEY in your .env file.'
             }), 500
         
-        # Get response from OpenAI
+        # Get response from OpenAI (use tools API format for GPT-5 and multi-tool support)
         if tools:
-            # Use function calling if Gmail tools are available
+            # Convert to tools API format: [{ type: "function", function: { name, description, parameters } }]
+            tools_for_api = [{"type": "function", "function": t} for t in tools]
+            max_tool_rounds = 10
+            response = None
             try:
-                response = openai.ChatCompletion.create(
-                    model=OPENAI_MODEL,
-                    messages=messages,
-                    functions=tools,
-                    function_call="auto",
-                    max_tokens=OPENAI_MAX_TOKENS,
-                    temperature=OPENAI_TEMPERATURE
-                )
+                for _ in range(max_tool_rounds):
+                    response = openai.ChatCompletion.create(
+                        model=OPENAI_MODEL,
+                        messages=messages,
+                        tools=tools_for_api,
+                        tool_choice="auto",
+                        max_completion_tokens=OPENAI_MAX_TOKENS,
+                        temperature=OPENAI_TEMPERATURE
+                    )
+                    message = response.choices[0].message
+                    # Prefer tool_calls; normalize legacy function_call to list
+                    tool_calls = getattr(message, "tool_calls", None)
+                    if not tool_calls and getattr(message, "function_call", None):
+                        fc = message.function_call
+                        tool_calls = [SimpleNamespace(id=getattr(fc, "id", "legacy_1"), function=SimpleNamespace(name=fc.name, arguments=fc.arguments))]
+                    if not tool_calls:
+                        break
+                    # Append assistant message (serialize for API)
+                    assistant_msg = {"role": "assistant", "content": message.content or ""}
+                    assistant_msg["tool_calls"] = [
+                        {"id": tc.id, "type": getattr(tc, "type", "function"), "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                        for tc in tool_calls
+                    ]
+                    messages.append(assistant_msg)
+                    # Execute each tool call and append tool results
+                    for tc in tool_calls:
+                        function_name = tc.function.name
+                        try:
+                            function_args = json.loads(tc.function.arguments)
+                        except json.JSONDecodeError:
+                            function_args = {}
+                        try:
+                            function_result = execute_function_call(
+                                function_name,
+                                function_args,
+                                gmail_integration_instance,
+                                calendar_integration_instance,
+                                notion_integration_instance,
+                                github_integration_instance,
+                                slack_integration_instance,
+                                hubspot_integration_instance
+                            )
+                        except Exception as e:
+                            logger.error(f"Error executing function {function_name}: {str(e)}", exc_info=True)
+                            return jsonify({
+                                'error': f'Failed to execute {function_name}: {str(e)}'
+                            }), 500
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": json.dumps(function_result)
+                        })
             except openai.error.AuthenticationError as e:
                 logger.error(f"OpenAI Authentication Error: {str(e)}", exc_info=True)
                 return jsonify({
@@ -344,63 +392,22 @@ def chat():
                 }), 500
             except openai.error.APIError as e:
                 logger.error(f"OpenAI API Error: {str(e)}", exc_info=True)
-                # Extract user-friendly error message
                 error_msg = str(e)
                 if "invalid_api_key" in error_msg or "Incorrect API key" in error_msg:
                     error_msg = "Invalid OpenAI API key. Please check your OPENAI_API_KEY in the .env file and ensure it's a valid key from https://platform.openai.com/api-keys"
-                return jsonify({
-                    'error': error_msg
-                }), 500
+                return jsonify({'error': error_msg}), 500
             except Exception as e:
                 logger.error(f"OpenAI Request Error: {str(e)}", exc_info=True)
-                return jsonify({
-                    'error': f'Failed to connect to OpenAI: {str(e)}'
-                }), 500
-            
-            # Handle function calls if any (model may return text only — no function_call)
-            message = response.choices[0].message
-            function_call = getattr(message, "function_call", None)
-            if function_call:
-                function_name = function_call.name
-                function_args = json.loads(function_call.arguments)
-                
-                # Execute the function call
-                try:
-                    function_result = execute_function_call(
-                        function_name, 
-                        function_args,
-                        gmail_integration_instance,
-                        calendar_integration_instance,
-                        notion_integration_instance,
-                        github_integration_instance,
-                        slack_integration_instance,
-                        hubspot_integration_instance
-                    )
-                except Exception as e:
-                    logger.error(f"Error executing function {function_name}: {str(e)}", exc_info=True)
-                    return jsonify({
-                        'error': f'Failed to execute {function_name}: {str(e)}'
-                    }), 500
-                
-                # Add function result to conversation
-                messages.append(message)
-                messages.append({
-                    "role": "function",
-                    "name": function_name,
-                    "content": json.dumps(function_result)
-                })
-                
-                # Get final response from OpenAI
-                response, error = get_openai_final_response(messages, function_name)
-                if error:
-                    return jsonify({'error': error}), 500
+                return jsonify({'error': f'Failed to connect to OpenAI: {str(e)}'}), 500
+            if response is None:
+                return jsonify({'error': 'No response from OpenAI after tool rounds'}), 500
         else:
             # No tools available, use regular chat
             try:
                 response = openai.ChatCompletion.create(
                     model=OPENAI_MODEL,
                     messages=messages,
-                    max_tokens=OPENAI_MAX_TOKENS,
+                    max_completion_tokens=OPENAI_MAX_TOKENS,
                     temperature=OPENAI_TEMPERATURE
                 )
             except openai.error.AuthenticationError as e:
@@ -416,20 +423,39 @@ def chat():
         
         ai_response = response.choices[0].message.content
         
-        # Check if we have data from function calls
+        # Build tool_call_id -> function name from assistant messages (for tools API)
+        tool_call_id_to_name = {}
+        for msg in messages:
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                for tc in msg["tool_calls"]:
+                    tid = tc.get("id")
+                    fn = tc.get("function") or {}
+                    if isinstance(fn, dict):
+                        tool_call_id_to_name[tid] = fn.get("name", "")
+                    else:
+                        tool_call_id_to_name[tid] = getattr(fn, "name", "")
+        # Check if we have data from tool/function calls
         email_data = None
         calendar_data = None
         for msg in messages:
-            if msg.get("role") == "function" and msg.get("name") == FUNCTION_GMAIL_FETCH_MAILS:
+            role, content = msg.get("role"), msg.get("content", "{}")
+            # Support both legacy "function" and current "tool" role
+            if role == "tool":
+                name = tool_call_id_to_name.get(msg.get("tool_call_id"), "")
+            elif role == "function":
+                name = msg.get("name", "")
+            else:
+                continue
+            if name == FUNCTION_GMAIL_FETCH_MAILS:
                 try:
-                    email_data = json.loads(msg.get("content", "{}"))
+                    email_data = json.loads(content) if isinstance(content, str) else content
                 except json.JSONDecodeError as e:
                     logger.warning(f"Failed to parse email data from function response: {str(e)}")
                 except Exception as e:
                     logger.error(f"Unexpected error parsing email data: {str(e)}", exc_info=True)
-            elif msg.get("role") == "function" and msg.get("name") == FUNCTION_CALENDAR_FETCH_EVENTS:
+            elif name == FUNCTION_CALENDAR_FETCH_EVENTS:
                 try:
-                    calendar_data = json.loads(msg.get("content", "{}"))
+                    calendar_data = json.loads(content) if isinstance(content, str) else content
                 except json.JSONDecodeError as e:
                     logger.warning(f"Failed to parse calendar data from function response: {str(e)}")
                 except Exception as e:
