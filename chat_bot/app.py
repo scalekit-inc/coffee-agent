@@ -5,6 +5,8 @@ import os
 from dotenv import load_dotenv
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from types import SimpleNamespace
 from gmail_integration import GmailIntegration
 from calendar_integration import CalendarIntegration
 from notion_integration import NotionIntegration
@@ -28,6 +30,11 @@ load_dotenv()
 
 # System Prompt for AI Assistant
 SYSTEM_PROMPT = f"""You are an AI assistant with Gmail, Google Calendar, Notion, GitHub, Slack, and HubSpot integration.
+
+CRITICAL - ACCURACY:
+- Only claim you performed an action (e.g. created an issue, sent a Slack message, created a calendar event) if you actually called the corresponding tool and the tool result had "success": true. Never claim success for something you did not do via a tool call.
+- If the user asks for an action that requires an integration (e.g. create a GitHub issue) but you do not have that tool available, say clearly that the integration is not connected and they need to connect it in the integrations settings. Do not invent or assume success.
+- If you call a tool and the result has "success": false or an error message, report that to the user (e.g. "GitHub is not connected" or the actual error). Do not claim the action succeeded.
 
 RESPONSE FORMAT:
 - Emails: Brief summary, mention "emails displayed below". Use 'sender' field (From), not 'recipient' (To).
@@ -327,16 +334,69 @@ def chat():
         
         # Get response from OpenAI
         if tools:
-            # Use function calling if Gmail tools are available
+            # Use function/tool calling with multi-round tool use and parallel execution
+            max_tool_rounds = 10
+            tools_for_api = [{"type": "function", "function": t} for t in tools]
             try:
-                response = openai.ChatCompletion.create(
-                    model=OPENAI_MODEL,
-                    messages=messages,
-                    functions=tools,
-                    function_call="auto",
-                    max_tokens=OPENAI_MAX_TOKENS,
-                    temperature=OPENAI_TEMPERATURE
-                )
+                for _ in range(max_tool_rounds):
+                    response = openai.ChatCompletion.create(
+                        model=OPENAI_MODEL,
+                        messages=messages,
+                        tools=tools_for_api,
+                        tool_choice="auto",
+                        max_completion_tokens=OPENAI_MAX_TOKENS,
+                        temperature=OPENAI_TEMPERATURE
+                    )
+                    message = response.choices[0].message
+                    # Prefer tool_calls; normalize legacy function_call to list
+                    tool_calls = getattr(message, "tool_calls", None)
+                    if not tool_calls and getattr(message, "function_call", None):
+                        fc = message.function_call
+                        tool_calls = [SimpleNamespace(id=getattr(fc, "id", "legacy_1"), function=SimpleNamespace(name=fc.name, arguments=fc.arguments))]
+                    if not tool_calls:
+                        break
+                    # Append assistant message (serialize for API)
+                    assistant_msg = {"role": "assistant", "content": message.content or ""}
+                    assistant_msg["tool_calls"] = [
+                        {"id": tc.id, "type": getattr(tc, "type", "function"), "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                        for tc in tool_calls
+                    ]
+                    messages.append(assistant_msg)
+                    # Execute tool calls in parallel to reduce latency when multiple tools are requested
+                    def run_one_tool(tc):
+                        try:
+                            function_args = json.loads(tc.function.arguments) if getattr(tc.function, "arguments", None) else {}
+                        except json.JSONDecodeError:
+                            function_args = {}
+                        try:
+                            result = execute_function_call(
+                                tc.function.name,
+                                function_args,
+                                gmail_integration_instance,
+                                calendar_integration_instance,
+                                notion_integration_instance,
+                                github_integration_instance,
+                                slack_integration_instance,
+                                hubspot_integration_instance
+                            )
+                            return (tc.id, json.dumps(result), None)
+                        except Exception as e:
+                            return (tc.id, None, e)
+                    results_by_id = {}
+                    with ThreadPoolExecutor(max_workers=min(len(tool_calls), 8)) as executor:
+                        futures = {executor.submit(run_one_tool, tc): tc for tc in tool_calls}
+                        for future in as_completed(futures):
+                            tid, content, err = future.result()
+                            if err:
+                                logger.error(f"Error executing tool: {str(err)}", exc_info=True)
+                                return jsonify({"error": f"Failed to execute tool: {str(err)}"}), 500
+                            results_by_id[tid] = content
+                    for tc in tool_calls:
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": results_by_id[tc.id]
+                        })
             except openai.error.AuthenticationError as e:
                 logger.error(f"OpenAI Authentication Error: {str(e)}", exc_info=True)
                 return jsonify({
