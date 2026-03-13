@@ -445,30 +445,38 @@
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
     
     <script>
-        // Authentication check
-        document.addEventListener('DOMContentLoaded', function() {
-            const userName = sessionStorage.getItem('userName');
-            const userEmail = sessionStorage.getItem('userEmail');
-            
+        // Authentication check (sessionStorage for email login, or /api/me for Google login)
+        document.addEventListener('DOMContentLoaded', async function() {
+            let userName = sessionStorage.getItem('userName');
+            let userEmail = sessionStorage.getItem('userEmail');
             if (!userName || !userEmail) {
-                // Redirect to login if not authenticated
+                try {
+                    const res = await fetch('/api/me');
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.authenticated && data.user) {
+                            userName = data.user.name;
+                            userEmail = data.user.email;
+                            sessionStorage.setItem('userName', userName);
+                            sessionStorage.setItem('userEmail', userEmail);
+                        }
+                    }
+                } catch (e) {}
+            }
+            if (!userName || !userEmail) {
                 window.location.href = '/login';
                 return;
             }
-            
-            // Display user info
             document.getElementById('userName').textContent = userName;
             document.getElementById('userEmail').textContent = userEmail;
             document.getElementById('userInitial').textContent = userName.charAt(0).toUpperCase();
             document.getElementById('userInfo').style.display = 'flex';
         });
         
-        function logout() {
-            // Clear session storage
+        async function logout() {
+            try { await fetch('/api/logout', { method: 'POST' }); } catch (e) {}
             sessionStorage.removeItem('userName');
             sessionStorage.removeItem('userEmail');
-            
-            // Redirect to login
             window.location.href = '/login';
         }
     </script>

@@ -14,9 +14,11 @@ OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "4096"))
 OPENAI_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "1"))
 OPENAI_TIMEOUT_SEC = int(os.getenv("OPENAI_TIMEOUT_SEC", "30"))
 
-# User Timezone Configuration
+# User Timezone Configuration (for calendar "today"/"yesterday" range)
+# Use IANA name (e.g. America/Los_Angeles, Asia/Kolkata) so server can compute UTC ranges correctly.
 USER_TIMEZONE = os.getenv("USER_TIMEZONE", "PDT")
 USER_TIMEZONE_OFFSET = os.getenv("USER_TIMEZONE_OFFSET", "UTC-8")
+USER_TIMEZONE_IANA = os.getenv("USER_TIMEZONE_IANA", "America/Los_Angeles")
 
 # Function Names 
 FUNCTION_GMAIL_FETCH_MAILS = "GMAIL_FETCH_MAILS"

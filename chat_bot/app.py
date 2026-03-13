@@ -1,7 +1,8 @@
-from flask import Flask, request, jsonify, render_template, session
+from flask import Flask, request, jsonify, render_template, session, redirect
 from flask_cors import CORS
 import openai
 import os
+import secrets
 from dotenv import load_dotenv
 import json
 import logging
@@ -131,11 +132,96 @@ def api_login():
         logger.error(f"Login failed: {str(e)}", exc_info=True)
         return jsonify({'success': False, 'message': f'Login failed: {str(e)}'})
 
+@app.route('/api/me')
+def api_me():
+    """Return current user from session (for chat page when user logged in via Google or email)."""
+    email = session.get('user_email')
+    name = session.get('user_name', (email or '').split('@')[0] if email else '')
+    if not email:
+        return jsonify({'authenticated': False}), 401
+    return jsonify({
+        'authenticated': True,
+        'user': {'name': name, 'email': email}
+    })
+
+
 @app.route('/api/logout', methods=['POST'])
 def api_logout():
     """Handle logout API request"""
     session.clear()
     return jsonify({'success': True, 'message': 'Logged out successfully'})
+
+
+def _scalekit_redirect_uri():
+    """Build the redirect URI for ScaleKit OAuth (must match exactly in ScaleKit dashboard)."""
+    base = request.url_root.rstrip('/')
+    return f"{base}/api/scalekit/callback"
+
+
+@app.route('/api/scalekit/authorize')
+def scalekit_authorize():
+    """Redirect to ScaleKit OAuth with provider=google for Sign in with Google."""
+    try:
+        from scalekit.common.scalekit import AuthorizationUrlOptions
+        from scalekit_client import get_scalekit_client
+    except ImportError as e:
+        logger.error(f"ScaleKit import error: {e}", exc_info=True)
+        return redirect('/login?error=config')
+    provider = request.args.get('provider', 'google').strip().lower()
+    if provider != 'google':
+        return redirect('/login?error=unsupported_provider')
+    state = secrets.token_urlsafe(24)
+    session['scalekit_oauth_state'] = state
+    redirect_uri = _scalekit_redirect_uri()
+    options = AuthorizationUrlOptions()
+    options.state = state
+    options.provider = 'google'
+    options.scopes = ['openid', 'profile', 'email', 'offline_access']
+    client = get_scalekit_client()
+    auth_url = client.get_authorization_url(redirect_uri, options)
+    logger.debug(f"Redirecting to ScaleKit authorize: provider={provider}")
+    return redirect(auth_url)
+
+
+@app.route('/api/scalekit/callback')
+def scalekit_callback():
+    """Handle ScaleKit OAuth callback: exchange code for tokens, get email, log user in."""
+    error = request.args.get('error')
+    error_desc = request.args.get('error_description', '')
+    if error:
+        logger.warning(f"ScaleKit callback error: {error} - {error_desc}")
+        return redirect(f'/login?error=auth_failed&message={error_desc}')
+    code = request.args.get('code')
+    state = request.args.get('state')
+    if not code:
+        return redirect('/login?error=missing_code')
+    stored_state = session.pop('scalekit_oauth_state', None)
+    if not state or state != stored_state:
+        logger.warning("ScaleKit callback: invalid or missing state (CSRF)")
+        return redirect('/login?error=invalid_state')
+    try:
+        from scalekit.common.scalekit import CodeAuthenticationOptions
+        from scalekit_client import get_scalekit_client
+    except ImportError as e:
+        logger.error(f"ScaleKit import error: {e}", exc_info=True)
+        return redirect('/login?error=config')
+    redirect_uri = _scalekit_redirect_uri()
+    try:
+        client = get_scalekit_client()
+        auth_result = client.authenticate_with_code(code, redirect_uri, CodeAuthenticationOptions())
+    except Exception as e:
+        logger.error(f"ScaleKit token exchange failed: {e}", exc_info=True)
+        return redirect('/login?error=exchange_failed')
+    user = auth_result.get('user') or {}
+    email = (user.get('email') or '').strip()
+    if not email:
+        logger.warning("ScaleKit callback: no email in user object")
+        return redirect('/login?error=no_email')
+    session['user_email'] = email
+    session['user_name'] = (user.get('name') or email.split('@')[0])
+    logger.info(f"User logged in via ScaleKit Google: {email}")
+    return redirect('/chat')
+
 
 def get_user_integrations():
     """Get user-specific integration instances"""
@@ -188,7 +274,8 @@ def execute_function_call(function_name, function_args, gmail_integration_instan
             max_results=function_args.get("max_results", 10),
             query=function_args.get("query", ""),
             time_min=function_args.get("time_min", ""),
-            time_max=function_args.get("time_max", "")
+            time_max=function_args.get("time_max", ""),
+            date=function_args.get("date", "")
         )
     elif function_name == FUNCTION_CALENDAR_CREATE_EVENT:
         return calendar_integration_instance.create_event(

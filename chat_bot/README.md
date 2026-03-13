@@ -54,7 +54,12 @@ SCALEKIT_ENV_URL=https://kindle-dev.scalekit.cloud
 
 # Optional: Custom port (default: 8000)
 # PORT=8000
+
+# Optional: User timezone for calendar "today"/"yesterday" (IANA name, e.g. America/Los_Angeles, Asia/Kolkata)
+# USER_TIMEZONE_IANA=America/Los_Angeles
 ```
+
+**Sign in with Google (ScaleKit):** The login page supports "Sign in with Google" using the same ScaleKit credentials (`SCALEKIT_CLIENT_ID`, `SCALEKIT_CLIENT_SECRET`, `SCALEKIT_ENV_URL`). The app redirects to ScaleKit with `provider=google` and, after auth, exchanges the code for tokens and logs the user in by email. Ensure your ScaleKit application allows the callback URL (e.g. `http://localhost:8000/api/scalekit/callback` for local dev and your production base URL + `/api/scalekit/callback` for production).
 
 ### Local Development
 
@@ -114,7 +119,14 @@ docker run -p 5000:5000 --env-file .env chat-bot
 
 ## API Endpoints
 
-- `GET /` - Main chat interface
+- `GET /` - Redirect to login
+- `GET /login` - Login page (email/password or Sign in with Google)
+- `GET /chat` - Chat interface (requires authentication)
+- `POST /api/login` - Email/password login
+- `GET /api/me` - Current user from session (used after Google login)
+- `POST /api/logout` - Log out and clear session
+- `GET /api/scalekit/authorize` - Redirect to ScaleKit OAuth (e.g. `?provider=google`)
+- `GET /api/scalekit/callback` - ScaleKit OAuth callback (code exchange, then redirect to `/chat`)
 - `POST /api/chat` - Send message and get AI response
 - `GET /api/health` - Health check endpoint
 

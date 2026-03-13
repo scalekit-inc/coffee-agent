@@ -1,10 +1,44 @@
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 import logging
+from datetime import datetime, timedelta, timezone
 from utils import convert_scalekit_response
 from scalekit.common.exceptions import ScalekitNotFoundException
 from scalekit_client import get_connect
 
 logger = logging.getLogger(__name__)
+
+
+def _utc_range_for_relative_date(relative_date: str) -> Tuple[str, str]:
+    """Compute time_min and time_max in UTC (ISO 8601 with Z) for 'today' or 'yesterday' in user timezone."""
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        ZoneInfo = None  # type: ignore
+    try:
+        from config import USER_TIMEZONE_IANA
+        tz_name = USER_TIMEZONE_IANA
+    except Exception:
+        tz_name = "America/Los_Angeles"
+    if ZoneInfo is None:
+        # Python < 3.9: use UTC as fallback
+        now = datetime.now(timezone.utc)
+        day = now.date() if relative_date == "today" else (now.date() - timedelta(days=1))
+        start = datetime(day.year, day.month, day.day, 0, 0, 0, tzinfo=timezone.utc)
+        end = start + timedelta(days=1)
+        return start.strftime("%Y-%m-%dT%H:%M:%SZ"), end.strftime("%Y-%m-%dT%H:%M:%SZ")
+    tz = ZoneInfo(tz_name)
+    now = datetime.now(tz)
+    if relative_date == "today":
+        day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+    elif relative_date == "yesterday":
+        day_start = (now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=1))
+        day_end = day_start + timedelta(days=1)
+    else:
+        raise ValueError(f"relative_date must be 'today' or 'yesterday', got: {relative_date}")
+    time_min = day_start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    time_max = day_end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return time_min, time_max
 
 class CalendarIntegration:
     def __init__(self, user_id="default_user"):
@@ -68,8 +102,8 @@ class CalendarIntegration:
             self.is_enabled = False
             return {"success": False, "enabled": False, "status": "error"}
     
-    def fetch_events(self, max_results: int = 10, query: str = "", time_min: str = "", time_max: str = "") -> Dict[str, Any]:
-        """Fetch calendar events from Google Calendar"""
+    def fetch_events(self, max_results: int = 10, query: str = "", time_min: str = "", time_max: str = "", date: str = "") -> Dict[str, Any]:
+        """Fetch calendar events from Google Calendar. Use date='today' or 'yesterday' for relative dates when time_min/time_max are not provided."""
         if not self.is_enabled:
             return {
                 "success": False,
@@ -78,12 +112,16 @@ class CalendarIntegration:
             }
         
         try:
-            # Debug: Log the parameters being sent
-            logger.debug(f"Calendar fetch parameters - time_min: {time_min}, time_max: {time_max}, query: {query}")
+            # When user asks for "today" or "yesterday", compute UTC range server-side so we don't rely on model passing correct times
+            if (date or "").strip().lower() in ("today", "yesterday") and (not time_min or not time_max):
+                time_min, time_max = _utc_range_for_relative_date((date or "").strip().lower())
+                logger.info(f"Calendar: using server-computed range for date={date!r}: time_min={time_min}, time_max={time_max}")
+            # If still missing and we have only one of them, log warning
+            elif not time_min or not time_max:
+                logger.warning(f"time_min or time_max is empty and date not set; request may return no or unexpected events.")
             
-            # Validate that time parameters are set for date-specific queries
-            if not time_min or not time_max:
-                logger.warning(f"time_min or time_max is empty! This may cause incorrect date filtering.")
+            # Debug: Log the parameters being sent
+            logger.debug(f"Calendar fetch parameters - time_min: {time_min}, time_max: {time_max}, query: {query}, date: {date}")
             
             # Add timezone information to debug
             if time_min and time_max:
@@ -286,10 +324,15 @@ class CalendarIntegration:
         return [
             {
                             "name": "GOOGLECALENDAR_FETCH_EVENTS",
-                            "description": "Retrieve calendar events from Google Calendar with detailed information including title, description, start/end times, attendees, and conference data. CRITICAL: When user asks for events for a specific date (today, tomorrow, or specific date like '27 August 2025'), you MUST calculate the correct UTC time range accounting for the user's local timezone. IMPORTANT: User is in PDT (UTC-8), so for 'August 28, 2025' set time_min to '2025-08-28T08:00:00Z' (00:00 PDT = 08:00 UTC) and time_max to '2025-08-29T08:00:00Z'. This ensures you get events for the user's local date, not UTC date. NOTE: All API times are in UTC (Z suffix), but frontend displays in local timezone. Requires an active Google Calendar connection through Google OAuth.",
+                            "description": "Retrieve calendar events from Google Calendar. When the user asks for events for 'today' or 'yesterday', ALWAYS set the 'date' parameter to 'today' or 'yesterday' (do not leave it empty). The server will then compute the correct UTC time range from the user's timezone. For other specific dates use time_min and time_max in UTC (ISO 8601 with Z). Requires an active Google Calendar connection.",
                             "parameters": {
                                 "type": "object",
                                 "properties": {
+                                    "date": {
+                                        "type": "string",
+                                        "enum": ["today", "yesterday"],
+                                        "description": "Use this when the user asks for events for 'today' or 'yesterday'. Set to 'today' or 'yesterday' respectively. Preferred over time_min/time_max for these relative dates."
+                                    },
                                     "max_results": {
                                         "type": "integer",
                                         "description": "Maximum number of events to retrieve (default: 10, max: 50)",
@@ -302,11 +345,11 @@ class CalendarIntegration:
                                     },
                                     "time_min": {
                                         "type": "string",
-                                        "description": "CRITICAL: Start time for filtering events (ISO 8601 format, UTC). For date-specific queries, account for user's PDT timezone (UTC-8). For 'August 28, 2025' set to '2025-08-28T08:00:00Z' (00:00 PDT = 08:00 UTC). DO NOT leave empty for date queries."
+                                        "description": "Start time for filtering (ISO 8601 UTC, e.g. 2025-03-13T00:00:00Z). Use with time_max for specific dates; for 'today' or 'yesterday' prefer using the 'date' parameter instead."
                                     },
                                     "time_max": {
                                         "type": "string",
-                                        "description": "CRITICAL: End time for filtering events (ISO 8601 format, UTC). For date-specific queries, account for user's PDT timezone (UTC-8). For 'August 28, 2025' set to '2025-08-29T08:00:00Z' (00:00 PDT = 08:00 UTC). DO NOT leave empty for date queries."
+                                        "description": "End time for filtering (ISO 8601 UTC, e.g. 2025-03-14T00:00:00Z). Use with time_min for specific dates; for 'today' or 'yesterday' prefer using the 'date' parameter instead."
                                     }
                                 },
                                 "required": []
